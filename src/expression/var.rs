@@ -1,7 +1,8 @@
 use cso_core::expression::ScalarExpression;
 use cso_core::ColumnRefSet;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Eq, Hash, PartialEq, Debug)]
+#[derive(Clone, Eq, Hash, PartialEq, Debug, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct ColumnVar {
     id: u32, // global column id
@@ -27,5 +28,9 @@ impl ScalarExpression for ColumnVar {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         col_set.insert(self.id);
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        Vec::new()
     }
 }

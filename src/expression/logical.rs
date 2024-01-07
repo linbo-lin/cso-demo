@@ -14,6 +14,10 @@ impl And {
 }
 
 impl ScalarExpression for And {
+    fn is_boolean_expression(&self) -> bool {
+        true
+    }
+
     fn equal(&self, other: &dyn ScalarExpression) -> bool {
         match other.downcast_ref::<And>() {
             Some(other) => self.expressions == other.expressions,
@@ -23,6 +27,14 @@ impl ScalarExpression for And {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.expressions.iter().for_each(|e| e.derive_used_columns(col_set));
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        let mut predicates = Vec::new();
+        self.expressions
+            .iter()
+            .for_each(|e| predicates.extend(e.split_predicates()));
+        predicates
     }
 }
 
@@ -39,6 +51,10 @@ impl Or {
 }
 
 impl ScalarExpression for Or {
+    fn is_boolean_expression(&self) -> bool {
+        true
+    }
+
     fn equal(&self, other: &dyn ScalarExpression) -> bool {
         match other.downcast_ref::<Or>() {
             Some(other) => self.expressions == other.expressions,
@@ -48,6 +64,10 @@ impl ScalarExpression for Or {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.expressions.iter().for_each(|e| e.derive_used_columns(col_set));
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
     }
 }
 
@@ -64,6 +84,9 @@ impl Not {
 }
 
 impl ScalarExpression for Not {
+    fn is_boolean_expression(&self) -> bool {
+        true
+    }
     fn equal(&self, other: &dyn ScalarExpression) -> bool {
         match other.downcast_ref::<Not>() {
             Some(other) => self.expression.eq(&other.expression),
@@ -73,5 +96,9 @@ impl ScalarExpression for Not {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.expression.derive_used_columns(col_set);
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
     }
 }

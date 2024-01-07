@@ -27,7 +27,7 @@ pub struct LogicalIndexScan {
     index_desc: IndexDesc,
     table_desc: TableDesc,
     output_columns: Vec<ColumnVar>,
-    predicate: Rc<dyn ScalarExpression>,
+    predicate: Vec<Box<dyn ScalarExpression>>,
 }
 
 impl LogicalIndexScan {
@@ -35,7 +35,7 @@ impl LogicalIndexScan {
         table_desc: TableDesc,
         index_md: &IndexMd,
         output_columns: Vec<ColumnVar>,
-        predicate: Rc<dyn ScalarExpression>,
+        predicate: Vec<Box<dyn ScalarExpression>>,
     ) -> Self {
         let index_desc = IndexDesc::new(
             index_md.mdid(),
@@ -63,7 +63,7 @@ impl LogicalIndexScan {
         &self.output_columns
     }
 
-    pub fn predicate(&self) -> &Rc<dyn ScalarExpression> {
+    pub fn predicate(&self) -> &Vec<Box<dyn ScalarExpression>> {
         &self.predicate
     }
 }

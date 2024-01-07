@@ -37,6 +37,10 @@ impl ScalarExpression for Equal {
         self.left.derive_used_columns(col_set);
         self.right.derive_used_columns(col_set);
     }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +78,10 @@ impl ScalarExpression for NotEqual {
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.left.derive_used_columns(col_set);
         self.right.derive_used_columns(col_set);
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
     }
 }
 
@@ -113,6 +121,10 @@ impl ScalarExpression for GreaterThan {
         self.left.derive_used_columns(col_set);
         self.right.derive_used_columns(col_set);
     }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +162,10 @@ impl ScalarExpression for LessThan {
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.left.derive_used_columns(col_set);
         self.right.derive_used_columns(col_set);
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
     }
 }
 
@@ -189,6 +205,10 @@ impl ScalarExpression for GreaterThanEqual {
         self.left.derive_used_columns(col_set);
         self.right.derive_used_columns(col_set);
     }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -226,5 +246,9 @@ impl ScalarExpression for LessThanEqual {
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.left.derive_used_columns(col_set);
         self.right.derive_used_columns(col_set);
+    }
+
+    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
+        vec![Box::new(self.clone())]
     }
 }

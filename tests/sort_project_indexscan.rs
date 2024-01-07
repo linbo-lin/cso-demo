@@ -1,5 +1,5 @@
 use cso_demo::datum::Datum;
-use cso_demo::expression::ScalarExpression;
+use cso_demo::expression::{And, ScalarExpression};
 use cso_demo::expression::{ColumnVar, IsNull};
 use cso_demo::metadata::CachedMdProvider;
 use cso_demo::metadata::MdAccessor;
@@ -8,8 +8,10 @@ use cso_demo::operator::logical_filter::LogicalFilter;
 use cso_demo::operator::logical_index_scan::IndexDesc;
 use cso_demo::operator::logical_project::LogicalProject;
 use cso_demo::operator::logical_scan::{LogicalScan, TableDesc};
+use cso_demo::operator::physical_filter::PhysicalFilter;
 use cso_demo::operator::physical_index_scan::PhysicalIndexScan;
 use cso_demo::operator::physical_project::PhysicalProject;
+use cso_demo::operator::physical_scan::PhysicalScan;
 use cso_demo::operator::physical_sort::{OrderSpec, Ordering, PhysicalSort};
 use cso_demo::property::sort_property::SortProperty;
 use cso_demo::property::PhysicalProperties;
@@ -29,8 +31,16 @@ fn logical_scan() -> LogicalPlan {
     LogicalPlan::new(Rc::new(scan), vec![], vec![])
 }
 
-fn logical_filter(input: Vec<LogicalPlan>) -> LogicalPlan {
-    let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
+fn logical_filter(input: Vec<LogicalPlan>, id: u32) -> LogicalPlan {
+    let predicate = IsNull::new(Box::new(ColumnVar::new(id)));
+    let filter = LogicalFilter::new(Rc::new(predicate));
+    LogicalPlan::new(Rc::new(filter), input, vec![])
+}
+
+fn logical_filter_and(input: Vec<LogicalPlan>, id_1: u32, id_2: u32) -> LogicalPlan {
+    let predicate_1 = IsNull::new(Box::new(ColumnVar::new(id_1)));
+    let predicate_2 = IsNull::new(Box::new(ColumnVar::new(id_2)));
+    let predicate = And::new(vec![Box::new(predicate_1), Box::new(predicate_2)]);
     let filter = LogicalFilter::new(Rc::new(predicate));
     LogicalPlan::new(Rc::new(filter), input, vec![])
 }
@@ -68,7 +78,7 @@ fn md_cache() -> MdCache {
     let boxed_relation_stats = Box::new(relation_stats.clone()) as Box<dyn Metadata>;
 
     // index metadata
-    let index_md = IndexMd::new(4, "IDX_1".to_string());
+    let index_md = IndexMd::new(4, "IDX_1".to_string(), vec![ColumnVar::new(0)], vec![ColumnVar::new(0)]);
     let boxed_index_md = Box::new(index_md) as Box<dyn Metadata>;
 
     // relation metadata
@@ -113,13 +123,13 @@ fn metadata_accessor() -> MdAccessor {
     MdAccessor::new(md_provider)
 }
 
-fn expected_physical_plan() -> PhysicalPlan {
+fn expected_physical_plan_with_index() -> PhysicalPlan {
     let mdid = 2;
     let table_desc = TableDesc::new(mdid);
     let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree);
     let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
     let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
-    let scan = PhysicalIndexScan::new(index_desc, table_desc, output_columns, Rc::new(predicate));
+    let scan = PhysicalIndexScan::new(index_desc, table_desc, output_columns, vec![Box::new(predicate)]);
     let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
 
     let project = vec![
@@ -140,17 +150,115 @@ fn expected_physical_plan() -> PhysicalPlan {
     PhysicalPlan::new(Rc::new(sort), vec![project])
 }
 
+// can completely cover filter
+// filter: isnull(column[0]) index: bitmap(column[0])
 #[test]
-fn test_sort_project_index_scan() {
+fn test_sort_project_index_scan_matched() {
     let mut optimizer = Optimizer::new(Options::default());
     let rule_set = create_rule_set();
 
     let scan = logical_scan();
-    let filter = logical_filter(vec![scan]);
+    let filter = logical_filter(vec![scan], 0);
     let project = logical_project(vec![filter]);
     let required_properties = required_properties();
     let md_accessor = metadata_accessor();
 
     let physical_plan = optimizer.optimize(project, required_properties, md_accessor, rule_set);
-    assert_eq!(physical_plan, expected_physical_plan());
+    assert_eq!(physical_plan, expected_physical_plan_with_index());
+}
+
+fn expected_physical_plan_without_index() -> PhysicalPlan {
+    let mdid = 2;
+    let table_desc = TableDesc::new(mdid);
+    let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
+
+    let scan = PhysicalScan::new(table_desc, output_columns);
+    let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
+
+    let predicate = IsNull::new(Box::new(ColumnVar::new(1)));
+    let filter = PhysicalFilter::new(Rc::new(predicate));
+    let filter = PhysicalPlan::new(Rc::new(filter), vec![scan]);
+
+    let project = vec![
+        Rc::new(ColumnVar::new(1)) as Rc<dyn ScalarExpression>,
+        Rc::new(ColumnVar::new(2)) as Rc<dyn ScalarExpression>,
+    ];
+    let project = PhysicalProject::new(project);
+    let project = PhysicalPlan::new(Rc::new(project), vec![filter]);
+
+    let order = OrderSpec {
+        order_desc: vec![Ordering {
+            key: ColumnVar::new(1),
+            ascending: true,
+            nulls_first: true,
+        }],
+    };
+    let sort = PhysicalSort::new(order);
+    PhysicalPlan::new(Rc::new(sort), vec![project])
+}
+
+// can not cover filter
+// filter: isnull(column[1]) index: bitmap(column[0])
+#[test]
+fn test_sort_project_index_scan_not_matched() {
+    let mut optimizer = Optimizer::new(Options::default());
+    let rule_set = create_rule_set();
+
+    let scan = logical_scan();
+    let filter = logical_filter(vec![scan], 1);
+    let project = logical_project(vec![filter]);
+    let required_properties = required_properties();
+    let md_accessor = metadata_accessor();
+
+    let physical_plan = optimizer.optimize(project, required_properties, md_accessor, rule_set);
+    assert_eq!(physical_plan, expected_physical_plan_without_index());
+}
+
+fn expected_physical_plan_with_index_and_filter() -> PhysicalPlan {
+    let mdid = 2;
+    let table_desc = TableDesc::new(mdid);
+    let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree);
+    let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
+    let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
+    let scan = PhysicalIndexScan::new(index_desc, table_desc, output_columns, vec![Box::new(predicate)]);
+    let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
+
+    let filter = PhysicalFilter::new(Rc::new(And::new(vec![Box::new(IsNull::new(Box::new(
+        ColumnVar::new(1),
+    )))])));
+    let filter = PhysicalPlan::new(Rc::new(filter), vec![scan]);
+
+    let project = vec![
+        Rc::new(ColumnVar::new(1)) as Rc<dyn ScalarExpression>,
+        Rc::new(ColumnVar::new(2)) as Rc<dyn ScalarExpression>,
+    ];
+    let project = PhysicalProject::new(project);
+    let project = PhysicalPlan::new(Rc::new(project), vec![filter]);
+
+    let order = OrderSpec {
+        order_desc: vec![Ordering {
+            key: ColumnVar::new(1),
+            ascending: true,
+            nulls_first: true,
+        }],
+    };
+    let sort = PhysicalSort::new(order);
+    PhysicalPlan::new(Rc::new(sort), vec![project])
+}
+
+// can partly cover filter
+// filter: isnull(column[1]) and isnull(column[0]) index: bitmap(column[0])
+#[test]
+fn test_sort_project_index_scan_partly_matched() {
+    let mut optimizer = Optimizer::new(Options::default());
+    let rule_set = create_rule_set();
+
+    let scan = logical_scan();
+    let filter = logical_filter_and(vec![scan], 0, 1);
+    let project = logical_project(vec![filter]);
+    let required_properties = required_properties();
+    let md_accessor = metadata_accessor();
+
+    let physical_plan = optimizer.optimize(project, required_properties, md_accessor, rule_set);
+    assert_eq!(physical_plan, expected_physical_plan_with_index_and_filter());
 }
