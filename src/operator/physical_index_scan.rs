@@ -14,7 +14,7 @@ pub struct PhysicalIndexScan {
     index_desc: IndexDesc,
     table_desc: TableDesc,
     output_columns: Vec<ColumnVar>,
-    _predicate: Vec<Box<dyn ScalarExpression>>,
+    _predicate: Rc<dyn ScalarExpression>,
 }
 
 impl PhysicalIndexScan {
@@ -22,7 +22,7 @@ impl PhysicalIndexScan {
         index_desc: IndexDesc,
         table_desc: TableDesc,
         output_columns: Vec<ColumnVar>,
-        _predicate: Vec<Box<dyn ScalarExpression>>,
+        _predicate: Rc<dyn ScalarExpression>,
     ) -> Self {
         PhysicalIndexScan {
             index_desc,

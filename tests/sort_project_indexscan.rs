@@ -78,7 +78,12 @@ fn md_cache() -> MdCache {
     let boxed_relation_stats = Box::new(relation_stats.clone()) as Box<dyn Metadata>;
 
     // index metadata
-    let index_md = IndexMd::new(4, "IDX_1".to_string(), vec![ColumnVar::new(0)], vec![ColumnVar::new(0)]);
+    let index_md = IndexMd::new(
+        4,
+        "IDX_1".to_string(),
+        vec![ColumnVar::new(0)],
+        vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)],
+    );
     let boxed_index_md = Box::new(index_md) as Box<dyn Metadata>;
 
     // relation metadata
@@ -129,7 +134,12 @@ fn expected_physical_plan_with_index() -> PhysicalPlan {
     let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree);
     let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
     let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
-    let scan = PhysicalIndexScan::new(index_desc, table_desc, output_columns, vec![Box::new(predicate)]);
+    let scan = PhysicalIndexScan::new(
+        index_desc,
+        table_desc,
+        output_columns,
+        Rc::new(And::new(vec![Box::new(predicate)])),
+    );
     let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
 
     let project = vec![
@@ -220,7 +230,12 @@ fn expected_physical_plan_with_index_and_filter() -> PhysicalPlan {
     let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree);
     let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
     let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
-    let scan = PhysicalIndexScan::new(index_desc, table_desc, output_columns, vec![Box::new(predicate)]);
+    let scan = PhysicalIndexScan::new(
+        index_desc,
+        table_desc,
+        output_columns,
+        Rc::new(And::new(vec![Box::new(predicate)])),
+    );
     let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
 
     let filter = PhysicalFilter::new(Rc::new(And::new(vec![Box::new(IsNull::new(Box::new(

@@ -45,6 +45,7 @@ impl Rule<Demo> for Filter2IndexScan {
             .logical_op()
             .downcast_ref::<LogicalFilter>()
             .expect("LogicalFilter expected!");
+        let predicate = logical_filter.predicate();
 
         debug_assert_eq!(input.inputs().len(), 1);
         let logical_scan = input.inputs()[0]
@@ -60,6 +61,12 @@ impl Rule<Demo> for Filter2IndexScan {
             .expect("Relation metadata missed!");
         let relation_md = relation_md.downcast_ref::<RelationMetadata>().unwrap();
 
+        let mut filter_predicate_columns = ColumnRefSet::new();
+        predicate.derive_used_columns(&mut filter_predicate_columns);
+        let mut filter_required_columns = ColumnRefSet::new();
+        input.derive_output_columns(&mut filter_required_columns);
+        filter_required_columns.union_with(&filter_predicate_columns);
+
         let mut new_plans = vec![];
         for i in 0..relation_md.index_count() {
             let index_mdid = relation_md.index_mdid(i);
@@ -67,22 +74,29 @@ impl Rule<Demo> for Filter2IndexScan {
                 .retrieve_metadata(&index_mdid)
                 .expect("Index metadata missed!");
             let index_md = index_md.downcast_ref::<IndexMd>().unwrap();
-            let predicate = logical_filter.predicate();
-            let (applicable, residual_predicate, index_predicate) = index_matched(index_md, predicate.as_ref());
-            if applicable {
+
+            if let Some((residual_predicates, applicable_predicates)) = index_matched(
+                index_md,
+                predicate.as_ref(),
+                &filter_required_columns,
+                &filter_predicate_columns,
+            ) {
                 let logical_index_scan = LogicalIndexScan::new(
                     table_desc.clone(),
                     index_md,
                     logical_scan.output_columns().to_vec(),
-                    index_predicate.unwrap(),
+                    Rc::new(And::new(applicable_predicates)),
                 );
-                let mut new_plan = Plan::new(Operator::Logical(Rc::new(logical_index_scan)), vec![], None);
+                let index_scan_plan = Plan::new(Operator::Logical(Rc::new(logical_index_scan)), vec![], None);
 
-                if let Some(new_logical_filter) = residual_predicate {
-                    new_plan = Plan::new(Operator::Logical(Rc::new(new_logical_filter)), vec![new_plan], None);
+                if !residual_predicates.is_empty() {
+                    let logical_filter = LogicalFilter::new(Rc::new(And::new(residual_predicates)));
+                    let filter_plan =
+                        Plan::new(Operator::Logical(Rc::new(logical_filter)), vec![index_scan_plan], None);
+                    new_plans.push(filter_plan);
+                } else {
+                    new_plans.push(index_scan_plan);
                 }
-
-                new_plans.push(new_plan);
             }
         }
         new_plans
@@ -93,44 +107,41 @@ impl Rule<Demo> for Filter2IndexScan {
     }
 }
 
-#[allow(clippy::type_complexity)]
+type ResidualAndApplicablePredicates = (Vec<Box<dyn ScalarExpression>>, Vec<Box<dyn ScalarExpression>>);
+
 fn index_matched(
     index_md: &IndexMd,
     predicate: &dyn ScalarExpression,
-) -> (bool, Option<LogicalFilter>, Option<Vec<Box<dyn ScalarExpression>>>) {
-    let mut predicate_include_columns = ColumnRefSet::new();
-    predicate.derive_used_columns(&mut predicate_include_columns);
-    let mut index_include_columns = ColumnRefSet::new();
-    for index_key in index_md.included_columns() {
-        index_key.derive_used_columns(&mut index_include_columns);
+    required_columns: &ColumnRefSet,
+    predicate_columns: &ColumnRefSet,
+) -> Option<ResidualAndApplicablePredicates> {
+    let mut key_columns = ColumnRefSet::new();
+    index_md
+        .key_columns()
+        .iter()
+        .for_each(|key| key.derive_used_columns(&mut key_columns));
+
+    let mut include_columns = ColumnRefSet::new();
+    index_md
+        .included_columns()
+        .iter()
+        .for_each(|key| key.derive_used_columns(&mut include_columns));
+
+    if !include_columns.is_superset(required_columns) || key_columns.is_disjoint(predicate_columns) {
+        return None;
     }
-    // index type is only btree now, so no need to judge
-    if index_include_columns.is_superset(&predicate_include_columns) {
-        let mut index_predicate = Vec::new();
-        for expression in predicate.split_predicates() {
-            index_predicate.push(expression);
-        }
-        (true, None, Some(index_predicate))
-    } else {
-        // split predicates into index part and not index part
-        let mut residual_predicate = Vec::new();
-        let mut index_predicate = Vec::new();
-        let mut applicable = false;
-        for expression in predicate.split_predicates() {
-            let mut predicate_include_columns = ColumnRefSet::new();
-            expression.derive_used_columns(&mut predicate_include_columns);
-            if index_include_columns.is_disjoint(&predicate_include_columns) {
-                residual_predicate.push(expression);
-            } else {
-                index_predicate.push(expression);
-                applicable = true;
-            }
-        }
-        if applicable {
-            let new_logical_filter = LogicalFilter::new(Rc::new(And::new(residual_predicate)));
-            (applicable, Some(new_logical_filter), Some(index_predicate))
+
+    let mut residual_predicates = Vec::new();
+    let mut applicable_predicates = Vec::new();
+    for expr in predicate.split_predicates() {
+        let mut used_columns = ColumnRefSet::new();
+        expr.derive_used_columns(&mut used_columns);
+        if key_columns.is_superset(&used_columns) {
+            applicable_predicates.push(expr);
         } else {
-            (false, None, None)
+            residual_predicates.push(expr);
         }
     }
+    debug_assert!(!applicable_predicates.is_empty());
+    Some((residual_predicates, applicable_predicates))
 }
