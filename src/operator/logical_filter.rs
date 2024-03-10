@@ -1,3 +1,4 @@
+use crate::expression::And;
 use crate::metadata::MdAccessor;
 use crate::operator::OperatorId;
 use crate::{Demo, Plan};
@@ -6,6 +7,17 @@ use cso_core::metadata::Stats;
 use cso_core::operator::LogicalOperator;
 use cso_core::ColumnRefSet;
 use std::rc::Rc;
+
+pub fn split_predicate(input: &Rc<dyn ScalarExpression>, predicates: &mut Vec<Rc<dyn ScalarExpression>>) {
+    match input.downcast_ref::<And>() {
+        None => predicates.push(input.clone()),
+        Some(and) => {
+            for input in and.expressions() {
+                split_predicate(input, predicates)
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct LogicalFilter {
@@ -20,6 +32,12 @@ impl LogicalFilter {
 
     pub fn predicate(&self) -> &Rc<dyn ScalarExpression> {
         &self.predicate
+    }
+
+    pub fn split_predicate(&self) -> Vec<Rc<dyn ScalarExpression>> {
+        let mut predicates = vec![];
+        split_predicate(&self.predicate, &mut predicates);
+        predicates
     }
 }
 

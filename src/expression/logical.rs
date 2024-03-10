@@ -1,15 +1,20 @@
 use cso_core::expression::ScalarExpression;
 use cso_core::ColumnRefSet;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct And {
-    expressions: Vec<Box<dyn ScalarExpression>>,
+    expressions: Vec<Rc<dyn ScalarExpression>>,
 }
 
 impl And {
-    pub fn new(expressions: Vec<Box<dyn ScalarExpression>>) -> And {
+    pub fn new(expressions: Vec<Rc<dyn ScalarExpression>>) -> And {
         assert!(expressions.iter().all(|expr| expr.is_boolean_expression()));
         And { expressions }
+    }
+
+    pub fn expressions(&self) -> &[Rc<dyn ScalarExpression>] {
+        &self.expressions
     }
 }
 
@@ -27,14 +32,6 @@ impl ScalarExpression for And {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.expressions.iter().for_each(|e| e.derive_used_columns(col_set));
-    }
-
-    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
-        let mut predicates = Vec::new();
-        self.expressions
-            .iter()
-            .for_each(|e| predicates.extend(e.split_predicates()));
-        predicates
     }
 }
 
@@ -65,10 +62,6 @@ impl ScalarExpression for Or {
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.expressions.iter().for_each(|e| e.derive_used_columns(col_set));
     }
-
-    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
-        vec![Box::new(self.clone())]
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -96,9 +89,5 @@ impl ScalarExpression for Not {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.expression.derive_used_columns(col_set);
-    }
-
-    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
-        vec![Box::new(self.clone())]
     }
 }

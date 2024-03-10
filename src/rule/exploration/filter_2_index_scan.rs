@@ -45,7 +45,6 @@ impl Rule<Demo> for Filter2IndexScan {
             .logical_op()
             .downcast_ref::<LogicalFilter>()
             .expect("LogicalFilter expected!");
-        let predicate = logical_filter.predicate();
 
         debug_assert_eq!(input.inputs().len(), 1);
         let logical_scan = input.inputs()[0]
@@ -61,12 +60,14 @@ impl Rule<Demo> for Filter2IndexScan {
             .expect("Relation metadata missed!");
         let relation_md = relation_md.downcast_ref::<RelationMetadata>().unwrap();
 
+        let predicate = logical_filter.predicate();
         let mut filter_predicate_columns = ColumnRefSet::new();
         predicate.derive_used_columns(&mut filter_predicate_columns);
         let mut filter_required_columns = ColumnRefSet::new();
         input.derive_output_columns(&mut filter_required_columns);
         filter_required_columns.union_with(&filter_predicate_columns);
 
+        let predicates = logical_filter.split_predicate();
         let mut new_plans = vec![];
         for i in 0..relation_md.index_count() {
             let index_mdid = relation_md.index_mdid(i);
@@ -75,9 +76,9 @@ impl Rule<Demo> for Filter2IndexScan {
                 .expect("Index metadata missed!");
             let index_md = index_md.downcast_ref::<IndexMd>().unwrap();
 
-            if let Some((residual_predicates, applicable_predicates)) = index_matched(
+            if let Some((applicable_predicates, residual_predicates)) = index_matched(
                 index_md,
-                predicate.as_ref(),
+                &predicates,
                 &filter_required_columns,
                 &filter_predicate_columns,
             ) {
@@ -85,12 +86,12 @@ impl Rule<Demo> for Filter2IndexScan {
                     table_desc.clone(),
                     index_md,
                     logical_scan.output_columns().to_vec(),
-                    Rc::new(And::new(applicable_predicates)),
+                    applicable_predicates,
                 );
                 let index_scan_plan = Plan::new(Operator::Logical(Rc::new(logical_index_scan)), vec![], None);
 
-                if !residual_predicates.is_empty() {
-                    let logical_filter = LogicalFilter::new(Rc::new(And::new(residual_predicates)));
+                if let Some(residual_predicates) = residual_predicates {
+                    let logical_filter = LogicalFilter::new(residual_predicates);
                     let filter_plan =
                         Plan::new(Operator::Logical(Rc::new(logical_filter)), vec![index_scan_plan], None);
                     new_plans.push(filter_plan);
@@ -107,14 +108,14 @@ impl Rule<Demo> for Filter2IndexScan {
     }
 }
 
-type ResidualAndApplicablePredicates = (Vec<Box<dyn ScalarExpression>>, Vec<Box<dyn ScalarExpression>>);
+type ApplicableAndResidualPredicates = (Rc<dyn ScalarExpression>, Option<Rc<dyn ScalarExpression>>);
 
 fn index_matched(
     index_md: &IndexMd,
-    predicate: &dyn ScalarExpression,
+    predicates: &[Rc<dyn ScalarExpression>],
     required_columns: &ColumnRefSet,
     predicate_columns: &ColumnRefSet,
-) -> Option<ResidualAndApplicablePredicates> {
+) -> Option<ApplicableAndResidualPredicates> {
     let mut key_columns = ColumnRefSet::new();
     index_md
         .key_columns()
@@ -133,15 +134,24 @@ fn index_matched(
 
     let mut residual_predicates = Vec::new();
     let mut applicable_predicates = Vec::new();
-    for expr in predicate.split_predicates() {
+    for expr in predicates {
         let mut used_columns = ColumnRefSet::new();
         expr.derive_used_columns(&mut used_columns);
         if key_columns.is_superset(&used_columns) {
-            applicable_predicates.push(expr);
+            applicable_predicates.push(expr.clone());
         } else {
-            residual_predicates.push(expr);
+            // For now, we are not considering complex indexing scenarios. We simply assume that
+            // when key_columns contain predicate used_columns, the current expr can use this index.
+            residual_predicates.push(expr.clone());
         }
     }
     debug_assert!(!applicable_predicates.is_empty());
-    Some((residual_predicates, applicable_predicates))
+    if residual_predicates.is_empty() {
+        Some((Rc::new(And::new(applicable_predicates)), None))
+    } else {
+        Some((
+            Rc::new(And::new(applicable_predicates)),
+            Some(Rc::new(And::new(residual_predicates))),
+        ))
+    }
 }

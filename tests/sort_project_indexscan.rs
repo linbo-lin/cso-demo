@@ -40,7 +40,7 @@ fn logical_filter(input: Vec<LogicalPlan>, id: u32) -> LogicalPlan {
 fn logical_filter_and(input: Vec<LogicalPlan>, id_1: u32, id_2: u32) -> LogicalPlan {
     let predicate_1 = IsNull::new(Box::new(ColumnVar::new(id_1)));
     let predicate_2 = IsNull::new(Box::new(ColumnVar::new(id_2)));
-    let predicate = And::new(vec![Box::new(predicate_1), Box::new(predicate_2)]);
+    let predicate = And::new(vec![Rc::new(predicate_1), Rc::new(predicate_2)]);
     let filter = LogicalFilter::new(Rc::new(predicate));
     LogicalPlan::new(Rc::new(filter), input, vec![])
 }
@@ -138,7 +138,7 @@ fn expected_physical_plan_with_index() -> PhysicalPlan {
         index_desc,
         table_desc,
         output_columns,
-        Rc::new(And::new(vec![Box::new(predicate)])),
+        Rc::new(And::new(vec![Rc::new(predicate)])),
     );
     let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
 
@@ -234,13 +234,13 @@ fn expected_physical_plan_with_index_and_filter() -> PhysicalPlan {
         index_desc,
         table_desc,
         output_columns,
-        Rc::new(And::new(vec![Box::new(predicate)])),
+        Rc::new(And::new(vec![Rc::new(predicate)])),
     );
     let scan = PhysicalPlan::new(Rc::new(scan), vec![]);
 
-    let filter = PhysicalFilter::new(Rc::new(And::new(vec![Box::new(IsNull::new(Box::new(
-        ColumnVar::new(1),
-    )))])));
+    let filter = PhysicalFilter::new(Rc::new(And::new(vec![Rc::new(IsNull::new(Box::new(ColumnVar::new(
+        1,
+    ))))])));
     let filter = PhysicalPlan::new(Rc::new(filter), vec![scan]);
 
     let project = vec![

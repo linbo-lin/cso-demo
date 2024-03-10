@@ -27,10 +27,6 @@ impl ScalarExpression for IsNull {
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.inner.derive_used_columns(col_set);
     }
-
-    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
-        vec![Box::new(self.clone())]
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -58,9 +54,5 @@ impl ScalarExpression for IsNotNull {
 
     fn derive_used_columns(&self, col_set: &mut ColumnRefSet) {
         self.inner.derive_used_columns(col_set);
-    }
-
-    fn split_predicates(&self) -> Vec<Box<dyn ScalarExpression>> {
-        vec![Box::new(self.clone())]
     }
 }

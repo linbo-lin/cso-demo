@@ -12,6 +12,7 @@ pub trait LogicalOperator<T: OptimizerType>: AsAny + Debug {
     fn name(&self) -> &str;
     fn operator_id(&self) -> &T::OperatorId;
     fn derive_statistics(&self, _md_accessor: &MdAccessor<T>, input_stats: &[Rc<dyn Stats>]) -> Rc<dyn Stats>;
+    /// Returns the columns in the table needed for the current operator.
     fn derive_output_columns(&self, inputs: &[Plan<T>], column_set: &mut ColumnRefSet);
 }
 

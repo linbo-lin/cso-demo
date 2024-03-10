@@ -116,6 +116,7 @@ impl<T: OptimizerType> Plan<T> {
         &self.op
     }
 
+    /// Returns the columns in the table needed for the current plan.
     pub fn derive_output_columns(&self, column_set: &mut ColumnRefSet) {
         self.op.logical_op().derive_output_columns(&self.inputs, column_set)
     }
