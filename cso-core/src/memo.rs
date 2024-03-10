@@ -90,8 +90,15 @@ impl<T: OptimizerType> GroupPlan<T> {
         self.require_to_output_map.get(reqd_prop).expect("output not null")
     }
 
-    pub fn compute_cost(&self, stats: Option<&dyn Stats>) -> Cost {
-        self.op.physical_op().compute_cost(stats)
+    pub fn compute_cost(&self) -> Cost {
+        let curr_group = self.group();
+        let mut curr_group = curr_group.borrow_mut();
+        let cost = self
+            .op
+            .physical_op()
+            .compute_cost(self.inputs(), curr_group.statistics().as_deref());
+        curr_group.update_cost(cost);
+        cost
     }
 
     pub fn update_require_to_output_map(
@@ -120,6 +127,8 @@ pub struct Group<T: OptimizerType> {
     statistics: Option<Rc<dyn Stats>>,
     lowest_cost_plans: LowestCostPlans<T>,
     child_required_properties: ChildRequiredPropertiesMap<T>,
+
+    cost: Option<Cost>,
 }
 
 pub type GroupRef<T> = Rc<RefCell<Group<T>>>;
@@ -135,6 +144,7 @@ impl<T: OptimizerType> Group<T> {
             statistics: None,
             lowest_cost_plans: HashMap::new(),
             child_required_properties: HashMap::new(),
+            cost: None,
         }
     }
 
@@ -262,6 +272,21 @@ impl<T: OptimizerType> Group<T> {
         }
 
         PhysicalPlan::new(operator, inputs)
+    }
+
+    pub fn cost(&self) -> Option<Cost> {
+        self.cost
+    }
+
+    pub fn update_cost(&mut self, new_cost: Cost) {
+        match self.cost {
+            None => self.cost = Some(new_cost),
+            Some(old_cost) => {
+                if old_cost.value() >= new_cost.value() {
+                    self.cost = Some(new_cost);
+                }
+            }
+        }
     }
 }
 

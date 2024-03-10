@@ -131,7 +131,7 @@ fn metadata_accessor() -> MdAccessor {
 fn expected_physical_plan_with_index() -> PhysicalPlan {
     let mdid = 2;
     let table_desc = TableDesc::new(mdid);
-    let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree);
+    let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree, 1);
     let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
     let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
     let scan = PhysicalIndexScan::new(
@@ -227,7 +227,7 @@ fn test_sort_project_index_scan_not_matched() {
 fn expected_physical_plan_with_index_and_filter() -> PhysicalPlan {
     let mdid = 2;
     let table_desc = TableDesc::new(mdid);
-    let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree);
+    let index_desc = IndexDesc::new(4, "IDX_1".to_string(), IndexType::Btree, 1);
     let output_columns = vec![ColumnVar::new(0), ColumnVar::new(1), ColumnVar::new(2)];
     let predicate = IsNull::new(Box::new(ColumnVar::new(0)));
     let scan = PhysicalIndexScan::new(

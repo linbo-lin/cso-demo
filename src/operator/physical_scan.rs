@@ -1,8 +1,9 @@
+use crate::cost::{COST_INIT_SCAN_FACTOR, COST_TABLE_SCAN_COST_UNIT};
 use crate::expression::ColumnVar;
 use crate::operator::logical_scan::TableDesc;
 use crate::operator::{OperatorId, PhysicalOperator};
 use crate::property::PhysicalProperties;
-use crate::Demo;
+use crate::{Demo, GroupRef};
 use cso_core::cost::Cost;
 use cso_core::metadata::Stats;
 use std::rc::Rc;
@@ -39,8 +40,13 @@ impl cso_core::operator::PhysicalOperator<Demo> for PhysicalScan {
         vec![vec![]]
     }
 
-    fn compute_cost(&self, _stats: Option<&dyn Stats>) -> Cost {
-        Cost::new(1.0)
+    fn compute_cost(&self, inputs: &[GroupRef], stats: Option<&dyn Stats>) -> Cost {
+        debug_assert!(stats.is_some());
+        debug_assert!(inputs.is_empty());
+
+        let row_count = stats.unwrap().output_row_count() as f64;
+        let cost = COST_INIT_SCAN_FACTOR + row_count * COST_TABLE_SCAN_COST_UNIT;
+        Cost::new(cost)
     }
 
     fn equal(&self, other: &PhysicalOperator) -> bool {

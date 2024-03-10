@@ -137,12 +137,20 @@ impl Statistics {
     pub fn column_stats(&self) -> &Vec<Box<dyn Metadata>> {
         &self.column_stats
     }
+
+    pub fn output_row_count(&self) -> u64 {
+        self.output_row_count
+    }
 }
 
 impl Stats for Statistics {
     fn should_update(&self, new_stats: &Rc<dyn Stats>) -> bool {
         let new_stats = new_stats.as_ref().as_any().downcast_ref::<Statistics>().unwrap();
         new_stats.output_row_count < self.output_row_count
+    }
+
+    fn output_row_count(&self) -> u64 {
+        self.output_row_count
     }
 }
 

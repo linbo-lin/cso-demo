@@ -15,11 +15,21 @@ pub struct IndexDesc {
     mdid: u64,
     name: String,
     index_type: IndexType,
+    key_columns_count: usize,
 }
 
 impl IndexDesc {
-    pub fn new(mdid: u64, name: String, index_type: IndexType) -> Self {
-        Self { mdid, name, index_type }
+    pub fn new(mdid: u64, name: String, index_type: IndexType, key_columns_count: usize) -> Self {
+        Self {
+            mdid,
+            name,
+            index_type,
+            key_columns_count,
+        }
+    }
+
+    pub fn key_columns_count(&self) -> usize {
+        self.key_columns_count
     }
 }
 
@@ -42,6 +52,7 @@ impl LogicalIndexScan {
             index_md.mdid(),
             index_md.index_name().to_string(),
             index_md.index_type().clone(),
+            index_md.key_columns().len(),
         );
 
         Self {

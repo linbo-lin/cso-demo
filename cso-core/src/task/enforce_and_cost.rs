@@ -57,12 +57,11 @@ impl<T: OptimizerType> EnforceAndCostTask<T> {
     fn submit_cost_plan(&self, child_output_props: Vec<Rc<PhysicalProperties<T>>>, memo: &mut Memo<T>) {
         let output_prop = {
             let mut curr_plan = self.plan.borrow_mut();
+            let curr_cost = curr_plan.compute_cost();
+
             let curr_group = curr_plan.group();
             let mut curr_group = curr_group.borrow_mut();
-
             let output_prop = curr_plan.derive_output_properties(&child_output_props);
-            let curr_cost = curr_plan.compute_cost(curr_group.statistics().as_deref());
-
             curr_plan.update_require_to_output_map(&output_prop, &output_prop);
             curr_group.update_cost_plan(&output_prop, &self.plan, curr_cost);
             curr_group.update_child_required_props(&output_prop, child_output_props, curr_cost);
@@ -74,11 +73,10 @@ impl<T: OptimizerType> EnforceAndCostTask<T> {
             enforcer_plan
                 .borrow_mut()
                 .update_require_to_output_map(&self.required_prop, &output_prop);
+            let enforcer_cost = enforcer_plan.borrow().compute_cost();
 
             let curr_group = self.plan.borrow().group();
             let mut curr_group = curr_group.borrow_mut();
-            let enforcer_cost = enforcer_plan.borrow().compute_cost(curr_group.statistics().as_deref());
-
             curr_group.update_cost_plan(&self.required_prop, &enforcer_plan, enforcer_cost);
             curr_group.update_child_required_props(&self.required_prop, vec![output_prop], enforcer_cost);
         }

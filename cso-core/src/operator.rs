@@ -1,5 +1,6 @@
 use crate::any::AsAny;
 use crate::cost::Cost;
+use crate::memo::GroupRef;
 use crate::metadata::MdAccessor;
 use crate::metadata::Stats;
 use crate::property::PhysicalProperties;
@@ -28,7 +29,7 @@ pub trait PhysicalOperator<T: OptimizerType>: AsAny + Clone + Debug {
     fn operator_id(&self) -> &T::OperatorId;
     fn derive_output_properties(&self, child_props: &[Rc<PhysicalProperties<T>>]) -> Rc<PhysicalProperties<T>>;
     fn required_properties(&self, input_prop: Rc<PhysicalProperties<T>>) -> Vec<Vec<Rc<PhysicalProperties<T>>>>;
-    fn compute_cost(&self, _stats: Option<&dyn Stats>) -> Cost;
+    fn compute_cost(&self, _inputs: &[GroupRef<T>], _stats: Option<&dyn Stats>) -> Cost;
     fn equal(&self, other: &dyn PhysicalOperator<T>) -> bool;
 }
 

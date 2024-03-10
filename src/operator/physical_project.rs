@@ -1,6 +1,7 @@
+use crate::cost::{cost_children, COST_TUP_DEFAULT_PROC_COST_UNIT};
 use crate::operator::{OperatorId, PhysicalOperator};
 use crate::property::PhysicalProperties;
-use crate::Demo;
+use crate::{Demo, GroupRef};
 use cso_core::cost::Cost;
 use cso_core::expression::ScalarExpression;
 use cso_core::metadata::Stats;
@@ -34,8 +35,13 @@ impl cso_core::operator::PhysicalOperator<Demo> for PhysicalProject {
         vec![vec![input_prop], vec![Rc::new(PhysicalProperties::new())]]
     }
 
-    fn compute_cost(&self, _stats: Option<&dyn Stats>) -> Cost {
-        Cost::new(1.0)
+    fn compute_cost(&self, inputs: &[GroupRef], stats: Option<&dyn Stats>) -> Cost {
+        debug_assert!(stats.is_some());
+
+        let row_count = stats.unwrap().output_row_count() as f64;
+        let cost_local = row_count * COST_TUP_DEFAULT_PROC_COST_UNIT;
+        let cost = cost_local + cost_children(inputs).value();
+        Cost::new(cost)
     }
 
     fn equal(&self, other: &PhysicalOperator) -> bool {

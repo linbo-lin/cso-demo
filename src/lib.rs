@@ -8,6 +8,7 @@ use crate::operator::OperatorId;
 use crate::rule::RuleId;
 use cso_core::OptimizerType;
 
+mod cost;
 pub mod datum;
 pub mod expression;
 pub mod operator;
