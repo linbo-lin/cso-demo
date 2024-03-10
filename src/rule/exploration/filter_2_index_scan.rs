@@ -75,7 +75,7 @@ impl Rule<Demo> for Filter2IndexScan {
                 .expect("Index metadata missed!");
             let index_md = index_md.downcast_ref::<IndexMd>().unwrap();
 
-            if let Some((residual_predicates, applicable_predicates)) = index_matched(
+            if let Some((applicable_predicates, residual_predicates)) = index_matched(
                 index_md,
                 predicate.as_ref(),
                 &filter_required_columns,
@@ -85,12 +85,12 @@ impl Rule<Demo> for Filter2IndexScan {
                     table_desc.clone(),
                     index_md,
                     logical_scan.output_columns().to_vec(),
-                    Rc::new(And::new(applicable_predicates)),
+                    applicable_predicates,
                 );
                 let index_scan_plan = Plan::new(Operator::Logical(Rc::new(logical_index_scan)), vec![], None);
 
-                if !residual_predicates.is_empty() {
-                    let logical_filter = LogicalFilter::new(Rc::new(And::new(residual_predicates)));
+                if let Some(residual_predicates) = residual_predicates {
+                    let logical_filter = LogicalFilter::new(residual_predicates);
                     let filter_plan =
                         Plan::new(Operator::Logical(Rc::new(logical_filter)), vec![index_scan_plan], None);
                     new_plans.push(filter_plan);
@@ -107,14 +107,14 @@ impl Rule<Demo> for Filter2IndexScan {
     }
 }
 
-type ResidualAndApplicablePredicates = (Vec<Box<dyn ScalarExpression>>, Vec<Box<dyn ScalarExpression>>);
+// type ResidualAndApplicablePredicates = ;
 
 fn index_matched(
     index_md: &IndexMd,
     predicate: &dyn ScalarExpression,
     required_columns: &ColumnRefSet,
     predicate_columns: &ColumnRefSet,
-) -> Option<ResidualAndApplicablePredicates> {
+) -> Option<(Rc<dyn ScalarExpression>, Option<Rc<dyn ScalarExpression>>)> {
     let mut key_columns = ColumnRefSet::new();
     index_md
         .key_columns()
@@ -136,12 +136,20 @@ fn index_matched(
     for expr in predicate.split_predicates() {
         let mut used_columns = ColumnRefSet::new();
         expr.derive_used_columns(&mut used_columns);
-        if key_columns.is_superset(&used_columns) {
-            applicable_predicates.push(expr);
-        } else {
+        if !key_columns.is_superset(&used_columns) {
             residual_predicates.push(expr);
+        } else {
+            // todo: if
+            applicable_predicates.push(expr);
         }
     }
     debug_assert!(!applicable_predicates.is_empty());
-    Some((residual_predicates, applicable_predicates))
+    if residual_predicates.is_empty() {
+        Some((Rc::new(And::new(applicable_predicates)), None))
+    } else {
+        Some((
+            Rc::new(And::new(applicable_predicates)),
+            Some(Rc::new(And::new(residual_predicates))),
+        ))
+    }
 }
